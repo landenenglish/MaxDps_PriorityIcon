@@ -1,3 +1,7 @@
+<img width="386" height="182" alt="image" src="https://github.com/user-attachments/assets/8d6d971f-8d71-44f8-ba42-75392074b82c" />
+
+
+
 # MaxDps Priority Icon
 
 A standalone addon that adds a centralized priority ability icon to MaxDps rotation helper. This icon displays the next recommended ability in one convenient location, perfect for players who have memorized their keybinds but still want rotation guidance.
