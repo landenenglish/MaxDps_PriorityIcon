@@ -28,8 +28,8 @@ DATE="$(date +%Y-%m-%d)"
   cat CHANGELOG.md 2>/dev/null || true
 } > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
 
-# 4) Commit and tag
-git add "$TOC" CHANGELOG.md "$ZIP"
+# 4) Commit and tag (do not add zip; it's ignored)
+git add "$TOC" CHANGELOG.md
 git commit -m "Release ${VER}: ${CHANGE}"
 git tag -a "v${VER}" -m "v${VER}"
 
