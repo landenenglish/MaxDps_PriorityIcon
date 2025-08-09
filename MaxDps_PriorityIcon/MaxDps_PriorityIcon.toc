@@ -1,0 +1,12 @@
+## Interface: 50400
+## Title: MaxDps Priority Icon
+## Notes: Central priority icon for MaxDps. Options: /maxdpspriority (/mdpspri) or AddOns settings → MaxDps → Priority Icon
+## Version: 1.0.0
+## Author: Custom Extension
+## RequiredDeps: MaxDps
+## SavedVariables: MaxDpsPriorityIconDB
+## X-Category: Combat
+
+Core.lua
+Config.lua
+Icons.lua 

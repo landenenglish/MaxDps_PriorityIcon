@@ -1,0 +1,14 @@
+# macOS
+.DS_Store
+
+# Build/Release artifacts
+*.zip
+release/
+dist/
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# Nested git folders (if recreated)
+MaxDps_PriorityIcon/.git/
