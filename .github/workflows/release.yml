@@ -4,8 +4,13 @@ permissions:
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0). Leave blank to use TOC version.'
+        required: false
+        type: string
 
 jobs:
   build-zip:
@@ -13,9 +18,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Determine version
         id: v
-        run: echo "VER=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+        shell: bash
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            tag="${tag#v}"
+            echo "VER=$tag" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            echo "VER=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            toc_ver=$(grep -E "^## Version:" MaxDps_PriorityIcon/MaxDps_PriorityIcon.toc | sed -E 's/^## Version:[[:space:]]*//')
+            echo "VER=${toc_ver}" >> $GITHUB_OUTPUT
+          fi
 
       - name: Verify .toc version matches tag
         run: |
@@ -32,5 +48,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: "MaxDps_PriorityIcon-${{ steps.v.outputs.VER }}.zip"
+          tag_name: 'v${{ steps.v.outputs.VER }}'
+          name: 'v${{ steps.v.outputs.VER }}'
+          target_commitish: ${{ github.sha }}
+          files: 'MaxDps_PriorityIcon-${{ steps.v.outputs.VER }}.zip'
           token: ${{ secrets.GITHUB_TOKEN }}
