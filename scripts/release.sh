@@ -11,6 +11,13 @@ fi
 VER="$1"; shift || true
 CHANGE="${*:-Release $VER}"
 
+# 0) Safety checks: require clean working tree
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "Error: working tree has uncommitted changes. Please commit or stash before releasing." >&2
+  git status -s
+  exit 2
+fi
+
 # 1) Bump version in .toc (macOS-compatible sed)
 sed -i '' -E "s/^(## Version: ).*/\\1${VER}/" "$TOC"
 
