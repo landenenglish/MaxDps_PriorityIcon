@@ -1,4 +1,7 @@
 ## 1.1.0 - 2025-08-10
+- Re-issue 1.1.0: same changes, tag rebuilt from clean tree
+
+## 1.1.0 - 2025-08-10
 - New settings UI, improved dragging/persistence, combat-entry snap, safe one-time migration
 
 ## 1.0.0 - 2025-08-09
