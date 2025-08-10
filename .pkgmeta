@@ -1,0 +1,16 @@
+package-as: MaxDps_PriorityIcon
+
+# Exclude development-only files and folders from the packaged zip
+ignore:
+  - .github
+  - scripts
+  - MaxDps_PriorityIcon-*.zip
+
+# Include license and use our CHANGELOG.md as the release notes
+license-output: LICENSE
+manual-changelog: CHANGELOG.md
+
+# You can enable the tokens below later if you want automatic version stamping
+# into files during packaging (optional):
+# enable-nolib-creation: no
+
