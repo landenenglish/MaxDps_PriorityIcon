@@ -4,9 +4,16 @@ local addonName, MaxDpsPriorityIcon = ...
 local Icons = MaxDpsPriorityIcon:NewModule('Icons', 'AceEvent-3.0')
 
 local GetSpellTexture = C_Spell and C_Spell.GetSpellTexture or GetSpellTexture
+local C_Timer = C_Timer
 
 -- Multiple cooldown frame support
 Icons.cooldownFrames = Icons.cooldownFrames or {}
+-- Soft-corner helpers (simulate slight border radius without circular mask)
+-- (rounded-corner attempts reverted; use standard texcoords)
+Icons.draggingCooldownGroup = false
+
+-- A pool of common spellIds for random test display
+-- test mode removed
 
 function Icons:OnEnable()
     self:CreateFrames()
@@ -15,10 +22,25 @@ end
 
 function Icons:CreateFrames()
     self:CreatePriorityFrame()
+    self:EnsureCooldownContainer()
     local maxShown = MaxDpsPriorityIcon.db and MaxDpsPriorityIcon.db.global and MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
     for i = 1, maxShown do
         self:CreateCooldownFrame(i)
     end
+end
+
+function Icons:EnsureCooldownContainer()
+    if self.cooldownContainer then return end
+    local container = CreateFrame('Frame', 'MaxDpsPriorityIconCooldownContainer', UIParent)
+    container:SetSize(1, 1)
+    container:SetFrameStrata('MEDIUM')
+    container:SetFrameLevel(48)
+    container:SetMovable(true)
+    container:SetClampedToScreen(true)
+    local pos = MaxDpsPriorityIcon.db.global.cooldown.position
+    local x, y = pos.x or 140, pos.y or -140
+    container:SetPoint('CENTER', UIParent, 'CENTER', x, y)
+    self.cooldownContainer = container
 end
 
 function Icons:UpdateAllVisibility()
@@ -36,7 +58,6 @@ function Icons:CreatePriorityFrame()
 
     local icon = frame:CreateTexture(nil, 'ARTWORK')
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     frame.icon = icon
 
     self:MakeDraggable(frame, 'priority')
@@ -51,14 +72,14 @@ function Icons:CreateCooldownFrame(index)
     if self.cooldownFrames[index] then return end
 
     local name = 'MaxDpsPriorityIconCooldownFrame' .. index
-    local frame = CreateFrame('Frame', name, UIParent, BackdropTemplateMixin and 'BackdropTemplate' or nil)
+    local parent = self.cooldownContainer or UIParent
+    local frame = CreateFrame('Frame', name, parent, BackdropTemplateMixin and 'BackdropTemplate' or nil)
     frame:SetSize(64, 64)
     frame:SetFrameStrata('MEDIUM')
     frame:SetFrameLevel(50)
 
     local icon = frame:CreateTexture(nil, 'ARTWORK')
     icon:SetAllPoints()
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     frame.icon = icon
 
     self:MakeDraggable(frame, 'cooldown')
@@ -92,23 +113,157 @@ function Icons:MakeDraggable(frame, iconType)
     frame:SetScript('OnMouseDown', function(f, button)
         if button == 'LeftButton' and not MaxDpsPriorityIcon.db.global.locked then
             f.isDragging = true
-            f:StartMoving()
+            if iconType == 'cooldown' then
+                -- For cooldown icons, move the group by dragging the first frame only
+                self:StartCooldownGroupDrag(self.cooldownFrames[1] or f)
+            else
+                f:StartMoving()
+            end
         end
     end)
     
     frame:SetScript('OnMouseUp', function(f, button)
         if button == 'LeftButton' and f.isDragging then
             f.isDragging = false
-            f:StopMovingOrSizing()
-            local _, _, _, xOfs, yOfs = f:GetPoint()
-            if xOfs and yOfs then
-                MaxDpsPriorityIcon.db.global[iconType].position.x = xOfs
-                MaxDpsPriorityIcon.db.global[iconType].position.y = yOfs
+            if iconType == 'cooldown' then
+                self:StopCooldownGroupDrag(f)
+            else
+                f:StopMovingOrSizing()
+                -- Persist priority icon position
+                local _, _, _, xOfs, yOfs = f:GetPoint()
+                if xOfs and yOfs then
+                    MaxDpsPriorityIcon.db.global.priority.position.x = xOfs
+                    MaxDpsPriorityIcon.db.global.priority.position.y = yOfs
+                end
             end
         elseif button == 'RightButton' then
             MaxDpsPriorityIcon:ShowConfig()
         end
     end)
+end
+-- Centralized apply-from-DB routine for all frames/state
+function Icons:ApplyAllSettingsFromDB()
+    -- Priority icon
+    if not self.priorityFrame then self:CreatePriorityFrame() end
+    self:RefreshPriority()
+
+    -- Cooldown container and frames
+    self:EnsureCooldownContainer()
+    self:ReanchorCooldownContainerToDB()
+    self:EnsureCooldownCapacity()
+    self:RefreshCooldowns()
+end
+-- High-level refresh helpers (DRY)
+function Icons:RefreshPriority()
+    self:UpdatePriorityScale()
+    self:UpdatePriorityPosition()
+    self:UpdatePriorityVisibility()
+end
+
+function Icons:RefreshCooldowns()
+    self:UpdateCooldownScale()
+    self:UpdateCooldownPosition()
+    self:UpdateCooldownVisibility()
+end
+
+-- Clear all runtime-only state (no SavedVariables changes)
+function Icons:ResetRuntime()
+    -- No test mode state
+
+    -- Clear frames content/visibility
+    self:ClearPriority()
+    self:ClearCooldown()
+
+    -- Clear dragging and timers
+    self.draggingCooldownGroup = false
+    if self._dragUpdater then
+        self._dragUpdater:SetScript('OnUpdate', nil)
+    end
+end
+
+-- Force the cooldown container to match DB-saved position
+function Icons:ReanchorCooldownContainerToDB()
+    if not self.cooldownContainer then return end
+    local pos = MaxDpsPriorityIcon.db and MaxDpsPriorityIcon.db.global and MaxDpsPriorityIcon.db.global.cooldown and MaxDpsPriorityIcon.db.global.cooldown.position or nil
+    local x = (pos and pos.x) or 60
+    local y = (pos and pos.y) or -60
+    self.cooldownContainer:ClearAllPoints()
+    self.cooldownContainer:SetPoint('CENTER', UIParent, 'CENTER', x, y)
+end
+
+function Icons:StartCooldownGroupDrag(draggedFrame)
+    self.draggingCooldownGroup = true
+    local maxShown = MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
+    local spacing = 6
+    local frameWidth = (self.cooldownFrames[1] and self.cooldownFrames[1]:GetWidth()) or 64
+
+    -- Mark frames as dragging to suppress external repositioning
+    for i = 1, maxShown do
+        local frame = self.cooldownFrames[i]
+        if frame then
+            frame.isDragging = true
+            if frame.icon and frame.icon:GetTexture() then frame:Show() end
+        end
+    end
+
+    -- Record starting cursor offset and container offset (center-relative)
+    local cursorX, cursorY = GetCursorPosition()
+    local uiScale = UIParent:GetEffectiveScale()
+    cursorX, cursorY = cursorX / uiScale, cursorY / uiScale
+    local parentCenterX, parentCenterY = UIParent:GetCenter()
+    local contX, contY = self.cooldownContainer:GetCenter()
+    self._dragStartCursorOffX = cursorX - parentCenterX
+    self._dragStartCursorOffY = cursorY - parentCenterY
+    self._dragStartContOffX = contX - parentCenterX
+    self._dragStartContOffY = contY - parentCenterY
+
+    -- Ensure we have an updater frame
+    if not self._dragUpdater then
+        self._dragUpdater = CreateFrame('Frame')
+    end
+
+    self._dragUpdater:SetScript('OnUpdate', function()
+        if not self.draggingCooldownGroup then return end
+        local x, y = GetCursorPosition()
+        x, y = x / uiScale, y / uiScale
+        local offX = x - parentCenterX
+        local offY = y - parentCenterY
+        local deltaX = offX - self._dragStartCursorOffX
+        local deltaY = offY - self._dragStartCursorOffY
+        local newContX = self._dragStartContOffX + deltaX
+        local newContY = self._dragStartContOffY + deltaY
+
+        self.cooldownContainer:ClearAllPoints()
+        self.cooldownContainer:SetPoint('CENTER', UIParent, 'CENTER', newContX, newContY)
+        -- Children are anchored to container; just refresh layout
+        self:UpdateCooldownPosition()
+    end)
+end
+
+function Icons:StopCooldownGroupDrag(draggedFrame)
+    -- Stop updater
+    if self._dragUpdater then
+        self._dragUpdater:SetScript('OnUpdate', nil)
+    end
+
+    -- Save final container center offset
+    local contX, contY = self.cooldownContainer:GetCenter()
+    local parentCenterX, parentCenterY = UIParent:GetCenter()
+    MaxDpsPriorityIcon.db.global.cooldown.position.x = contX - parentCenterX
+    MaxDpsPriorityIcon.db.global.cooldown.position.y = contY - parentCenterY
+
+    -- Clear dragging flags
+    local maxShown = MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
+    for i = 1, maxShown do
+        local frame = self.cooldownFrames[i]
+        if frame then frame.isDragging = false end
+    end
+    self.draggingCooldownGroup = false
+
+    -- Reposition and ensure visible if testing
+    self:UpdateCooldownPosition()
+    self:UpdateCooldownVisibility()
+    self.draggingCooldownGroup = false
 end
 
 -- Priority Icon Methods
@@ -117,7 +272,7 @@ function Icons:UpdatePriorityPosition()
     if self.priorityFrame.isDragging then return end -- Don't update position while dragging
     
     local pos = MaxDpsPriorityIcon.db.global.priority.position
-    local x, y = pos.x or 0, pos.y or -100
+    local x, y = pos.x or 0, pos.y or -120
     self.priorityFrame:ClearAllPoints()
     self.priorityFrame:SetPoint('CENTER', UIParent, 'CENTER', x, y)
 end
@@ -132,7 +287,8 @@ end
 function Icons:UpdatePriorityVisibility()
     if self.priorityFrame then
         local enabled = MaxDpsPriorityIcon.db.global.enabled and MaxDpsPriorityIcon.db.global.priority.enabled
-        local combatOk = not MaxDpsPriorityIcon.db.global.combatOnly or InCombatLockdown()
+        local menuOpen = MaxDpsPriorityIcon.IsConfigOpen and MaxDpsPriorityIcon:IsConfigOpen()
+        local combatOk = menuOpen or (not MaxDpsPriorityIcon.db.global.combatOnly or InCombatLockdown())
         self.priorityFrame:SetShown(enabled and combatOk)
     end
 end
@@ -170,16 +326,16 @@ end
 function Icons:UpdateCooldownPosition()
     local maxShown = MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
     local spacing = 6
-    local pos = MaxDpsPriorityIcon.db.global.cooldown.position
-    local startX, startY = pos.x or 100, pos.y or -100
+    local container = self.cooldownContainer
+    if not container then self:EnsureCooldownContainer(); container = self.cooldownContainer end
 
+    -- Position cooldown frames relative to the container only
     for i = 1, maxShown do
         local frame = self.cooldownFrames[i]
-        if frame then
-            if frame.isDragging then return end -- Don't update position while dragging
+        if frame and not frame.isDragging then
             frame:ClearAllPoints()
             local width = frame:GetWidth() or 64
-            frame:SetPoint('CENTER', UIParent, 'CENTER', startX + (i - 1) * (width + spacing), startY)
+            frame:SetPoint('CENTER', container, 'CENTER', (i - 1) * (width + spacing), 0)
         end
     end
 end
@@ -197,7 +353,8 @@ end
 
 function Icons:UpdateCooldownVisibility()
     local enabled = MaxDpsPriorityIcon.db.global.enabled and MaxDpsPriorityIcon.db.global.cooldown.enabled
-    local combatOk = not MaxDpsPriorityIcon.db.global.combatOnly or InCombatLockdown()
+    local menuOpen = MaxDpsPriorityIcon.IsConfigOpen and MaxDpsPriorityIcon:IsConfigOpen()
+    local combatOk = menuOpen or self.draggingCooldownGroup == true or (not MaxDpsPriorityIcon.db.global.combatOnly or InCombatLockdown())
     local show = enabled and combatOk
     local maxShown = MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
     for i = 1, maxShown do
@@ -304,11 +461,14 @@ function Icons:SavePosition(iconType)
         local pos = MaxDpsPriorityIcon.db.global[iconType].position
         pos.x, pos.y = xOfs, yOfs
     else
-        local frame = self.cooldownFrames[1]
-        if not frame or frame.isDragging then return end
-        local _, _, _, xOfs, yOfs = frame:GetPoint()
+        -- Save the cooldown container position relative to UIParent center
+        if not self.cooldownContainer then return end
+        local contX, contY = self.cooldownContainer:GetCenter()
+        if not contX or not contY then return end
+        local parentCenterX, parentCenterY = UIParent:GetCenter()
         local pos = MaxDpsPriorityIcon.db.global[iconType].position
-        pos.x, pos.y = xOfs, yOfs
+        pos.x = contX - parentCenterX
+        pos.y = contY - parentCenterY
     end
 end
 
@@ -323,6 +483,7 @@ function Icons:ClearPriority()
         self.priorityFrame:Hide()
         self.priorityFrame.spellId = nil
     end
+    self.priorityTestActive = false
 end
 
 function Icons:ClearCooldown()
@@ -335,6 +496,7 @@ function Icons:ClearCooldown()
             frame.icon:SetTexture(nil)
         end
     end
+    self.cooldownTestActive = false
 end
 
 function Icons:HideAll()
@@ -343,27 +505,5 @@ function Icons:HideAll()
     for i = 1, maxShown do
         local frame = self.cooldownFrames[i]
         if frame then frame:Hide() end
-    end
-end
-
--- Test Mode
-function Icons:TogglePriorityTest()
-    if self.priorityFrame and self.priorityFrame.spellId then
-        self:ClearPriority()
-    else
-        self:UpdatePriority(8690) -- Hearthstone test spell
-    end
-end
-
-function Icons:ToggleCooldownTest()
-    local maxShown = MaxDpsPriorityIcon.db.global.cooldown.maxShown or 3
-    if self.cooldownFrames and self.cooldownFrames[1] and self.cooldownFrames[1].spellId then
-        self:ClearCooldown()
-    else
-        for i = 1, maxShown do
-            -- Use a mix of test spells; if not available, texture fallback will hide
-            local testSpell = (i == 1 and 8690) or (i == 2 and 116) or (i == 3 and 133) or 5176 -- Hearthstone/Frostbolt/Fireball/Wrath
-            self:UpdateCooldown(testSpell)
-        end
     end
 end
