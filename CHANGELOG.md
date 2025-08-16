@@ -1,4 +1,7 @@
 ## 1.2.0 - 2025-08-16
+- GCD overlay setting (default off), cleaner settings UI; persistence/migration polish
+
+## 1.2.0 - 2025-08-16
 - GCD overlay option (default on), cleaner settings UI, safer migrations & persistence fixes
 
 ## 1.1.0 - 2025-08-10
