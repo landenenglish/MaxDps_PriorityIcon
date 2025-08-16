@@ -1,3 +1,6 @@
+## 1.2.0 - 2025-08-16
+- GCD overlay option (default on), cleaner settings UI, safer migrations & persistence fixes
+
 ## 1.1.0 - 2025-08-10
 - Re-issue 1.1.0: same changes, tag rebuilt from clean tree
 
