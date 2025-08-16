@@ -17,7 +17,8 @@ local defaults = {
         priority = {
             position = DEFAULT_PRIORITY_POSITION,
             scale = 0.35,
-            enabled = true
+            enabled = true,
+            gcdOverlay = true
         },
         
         -- Cooldown icon settings  

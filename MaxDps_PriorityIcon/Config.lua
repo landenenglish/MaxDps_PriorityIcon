@@ -95,7 +95,20 @@ function Config:CreateConfigFrame()
         MaxDpsPriorityIcon.db.global.combatOnly = self:GetChecked()
         Config:UpdateIcons()
     end)
-    genY = genY - 36
+    genY = genY - 28
+
+    -- Priority GCD overlay toggle (move here in General)
+    local gcdCheck = CreateFrame('CheckButton', nil, general, 'ChatConfigCheckButtonTemplate')
+    gcdCheck:SetPoint('TOPLEFT', general, 'TOPLEFT', 10, genY)
+    gcdCheck.Text:SetText('Show Global Cooldown overlay on priority icon')
+    gcdCheck:SetChecked(MaxDpsPriorityIcon.db.global.priority.gcdOverlay ~= false)
+    gcdCheck:SetScript('OnClick', function(self)
+        MaxDpsPriorityIcon.db.global.priority.gcdOverlay = self:GetChecked()
+        if MaxDpsPriorityIcon.Icons and MaxDpsPriorityIcon.Icons.UpdateGCDOverlay then
+            MaxDpsPriorityIcon.Icons:UpdateGCDOverlay()
+        end
+    end)
+    genY = genY - 28
 
     -- Small tip line
     local tip = general:CreateFontString(nil, 'OVERLAY', 'GameFontNormalSmall')
@@ -140,6 +153,8 @@ function Config:CreateConfigFrame()
         Config:UpdateIcons()
     end)
     priY = priY - 36
+    
+    -- (GCD overlay toggle moved to General)
     local priBottom = priSlider
     FinishSection(pri, priBottom)
 

@@ -17,6 +17,8 @@ Icons.draggingCooldownGroup = false
 
 function Icons:OnEnable()
     self:CreateFrames()
+    -- Track GCD for overlay
+    self:RegisterEvent('SPELL_UPDATE_COOLDOWN', 'OnSpellCooldownUpdate')
     return self
 end
 
@@ -60,12 +62,19 @@ function Icons:CreatePriorityFrame()
     icon:SetAllPoints()
     frame.icon = icon
 
+    -- Global Cooldown overlay (radial sweep)
+    local gcd = CreateFrame('Cooldown', nil, frame, 'CooldownFrameTemplate')
+    gcd:SetAllPoints()
+    gcd:Hide()
+    frame.gcd = gcd
+
     self:MakeDraggable(frame, 'priority')
 
     self.priorityFrame = frame
     self:UpdatePriorityPosition()
     self:UpdatePriorityScale()
     self:UpdatePriorityVisibility()
+    self:UpdateGCDOverlay()
 end
 
 function Icons:CreateCooldownFrame(index)
@@ -290,6 +299,7 @@ function Icons:UpdatePriorityVisibility()
         local menuOpen = MaxDpsPriorityIcon.IsConfigOpen and MaxDpsPriorityIcon:IsConfigOpen()
         local combatOk = menuOpen or (not MaxDpsPriorityIcon.db.global.combatOnly or InCombatLockdown())
         self.priorityFrame:SetShown(enabled and combatOk)
+        self:UpdateGCDOverlay()
     end
 end
 
@@ -319,6 +329,7 @@ function Icons:UpdatePriority(spellId)
         if not self.priorityFrame.isDragging then
             self:UpdatePriorityVisibility()
         end
+        self:UpdateGCDOverlay()
     end
 end
 
@@ -337,6 +348,28 @@ function Icons:UpdateCooldownPosition()
             local width = frame:GetWidth() or 64
             frame:SetPoint('CENTER', container, 'CENTER', (i - 1) * (width + spacing), 0)
         end
+    end
+end
+
+-- GCD overlay logic
+function Icons:OnSpellCooldownUpdate()
+    self:UpdateGCDOverlay()
+end
+
+function Icons:UpdateGCDOverlay()
+    if not self.priorityFrame or not self.priorityFrame:IsShown() then return end
+    local gcdFrame = self.priorityFrame.gcd
+    if not gcdFrame then return end
+    if MaxDpsPriorityIcon.db and MaxDpsPriorityIcon.db.global and MaxDpsPriorityIcon.db.global.priority and MaxDpsPriorityIcon.db.global.priority.gcdOverlay == false then
+        gcdFrame:Hide()
+        return
+    end
+    local start, duration = GetSpellCooldown(61304) -- global cooldown
+    if start and duration and duration > 0 and duration <= 2.5 then
+        gcdFrame:SetCooldown(start, duration)
+        gcdFrame:Show()
+    else
+        gcdFrame:Hide()
     end
 end
 
@@ -482,6 +515,7 @@ function Icons:ClearPriority()
     if self.priorityFrame then
         self.priorityFrame:Hide()
         self.priorityFrame.spellId = nil
+        if self.priorityFrame.gcd then self.priorityFrame.gcd:Hide() end
     end
     self.priorityTestActive = false
 end
