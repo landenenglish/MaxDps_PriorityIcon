@@ -49,13 +49,22 @@ ADDONS_DIR="$(choose_addons_dir "${1:-}")" || {
 
 TARGET="${ADDONS_DIR}/${ADDON_NAME}"
 
+# If a real folder exists, back it up so we can restore later
+if [[ -e "${TARGET}" && ! -L "${TARGET}" ]]; then
+  ts="$(date +%Y%m%d%H%M%S)"
+  backup="${TARGET}.bak-${ts}"
+  mv "${TARGET}" "${backup}"
+  echo "Backed up existing folder to: ${backup}"
+  # Record last backup for convenience
+  echo "${backup}" > "${ROOT_DIR}/.devlink_last_backup"
+fi
+
+# If a symlink exists, replace it
 if [[ -L "${TARGET}" ]]; then
   rm -f "${TARGET}"
-elif [[ -e "${TARGET}" ]]; then
-  echo "Error: ${TARGET} exists and is not a symlink. Move it aside or remove it first." >&2
-  exit 1
 fi
 
 ln -s "${SRC_DIR}" "${TARGET}"
 echo "Linked: ${SRC_DIR} -> ${TARGET}"
+echo "Tip: When done, run scripts/dev-unlink.sh to restore your backup if one exists."
 echo "Reload UI in-game with /reload to pick up changes."

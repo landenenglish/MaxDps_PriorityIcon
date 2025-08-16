@@ -43,6 +43,18 @@ TARGET="${ADDONS_DIR}/${ADDON_NAME}"
 if [[ -L "${TARGET}" ]]; then
   rm -f "${TARGET}"
   echo "Unlinked: ${TARGET}"
+  # If we have a recorded backup and it still exists, restore it
+  LAST_BACKUP_FILE="${ROOT_DIR}/.devlink_last_backup"
+  if [[ -f "${LAST_BACKUP_FILE}" ]]; then
+    LAST_BACKUP_PATH="$(cat "${LAST_BACKUP_FILE}")"
+    if [[ -d "${LAST_BACKUP_PATH}" ]]; then
+      mv "${LAST_BACKUP_PATH}" "${TARGET}"
+      echo "Restored backup to: ${TARGET}"
+      rm -f "${LAST_BACKUP_FILE}" || true
+    else
+      echo "Note: recorded backup not found at ${LAST_BACKUP_PATH}." >&2
+    fi
+  fi
 else
   echo "Nothing to unlink at ${TARGET} (not a symlink)."
 fi
